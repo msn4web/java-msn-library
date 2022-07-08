@@ -180,8 +180,6 @@ public class IncomingUSR extends MsnIncomingMessage {
 
                 private String getPassportUrl() throws IOException {
 //                    log.debug("MSNDEBUG: Retrieving passport url");
-                    if (JmlConstants.FAST_SSL_LOGIN)
-                        return "https://login.live.com/login2.srf";
                     return getPassportUrlSlow();
                 }
 
