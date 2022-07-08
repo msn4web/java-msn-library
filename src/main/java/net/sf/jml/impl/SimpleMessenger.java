@@ -32,7 +32,7 @@ public class SimpleMessenger extends BasicMessenger {
     private RateThread rater = null;
     private Thread rateThread = null;
     
-    SimpleMessenger(Email email, String password) 
+    public SimpleMessenger(Email email, String password)
     {
         super(email, password);
         rater = new RateThread();
