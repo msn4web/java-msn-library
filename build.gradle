@@ -1,0 +1,21 @@
+plugins {
+    id 'java-library'
+}
+
+group 'sf.net.jml'
+version '1.0.4-SNAPSHOT'
+
+repositories {
+    mavenCentral()
+
+    maven {
+        url "https://packages.atlassian.com/mvn/maven-external/"
+    }
+}
+
+dependencies {
+    implementation 'commons-logging:commons-logging:1.1.3'
+    implementation 'net.sf.cindy:cindy:2.4.3'
+    implementation 'org.apache.httpcomponents:httpcore:4.0.1'
+
+}

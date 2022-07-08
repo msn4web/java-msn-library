@@ -1,0 +1,520 @@
+/*
+ * SocketSession.java
+ *
+ * Created on March 13, 2007, 6:13 PM
+ *
+ * To change this template, choose Tools | Template Manager
+ * and open the template in the editor.
+ */
+
+package net.sf.jml.net;
+
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.net.Socket;
+import java.net.SocketAddress;
+import java.net.SocketException;
+import java.nio.ByteBuffer;
+import java.util.Collection;
+import java.util.Iterator;
+import java.util.Vector;
+import net.sf.jml.util.ByteBufferUtils;
+import net.sf.jml.util.CopyOnWriteCollection;
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
+import java.util.*;
+
+/**
+ *
+ * @author damencho
+ */
+public class Session
+{
+    private static final Log logger = LogFactory.getLog(Session.class);
+    
+    private final Collection sessionListeners = new CopyOnWriteCollection();
+    
+    private Socket socket = null;
+    private InputStream in = null;
+    private OutputStream out = null;
+    
+    private boolean isStarted = false;
+    
+    private SocketAddress socketAddress = null;
+    
+    private Object attachment = null;
+    
+    private MessageRecognizer messagerecognizer = null;
+    
+    private boolean isClosing = false;
+    
+    private boolean isAvailable = false;
+    
+    private MsgSender msgSender = null;
+    private MsgDispatcher msgDispatcher = null;
+    
+    private Timer timoutTimer = new Timer();
+        
+    /** Creates a new instance of SocketSession */
+    public Session()
+    {
+    }
+    
+    public Socket getSocket()
+    {
+        return socket;
+    }
+    
+    public void setSocketAddress(SocketAddress socketaddress)
+        throws IllegalStateException
+    {
+        if(isStarted)
+        {
+            throw new IllegalStateException("can't set socket address after session started");
+        } else
+        {
+            this.socketAddress = socketaddress;
+            return;
+        }
+    }
+    
+    public Object getAttachment()
+    {
+        return attachment;
+    }
+    
+    public void setAttachment(Object o)
+    {
+        this.attachment = o;
+    }
+
+    public void setMessageRecognizer(MessageRecognizer messagerecognizer)
+    {
+        this.messagerecognizer = messagerecognizer;
+    }
+    
+    public void addSessionListener(SessionListener sessionlistener)
+    {
+        sessionListeners.add(sessionlistener);
+    }
+    
+    public void removeSessionListener(SessionListener sessionlistener)
+    {
+        sessionListeners.remove(sessionlistener);
+    }
+
+    public boolean isAvailable()
+    {
+        return isAvailable;
+    }
+    
+    ByteBuffer readBuffer = null;
+    
+    public void start(boolean flag)
+        throws IllegalStateException
+    {
+        msgDispatcher = new MsgDispatcher();
+        Thread msgDispatcherThread = new Thread(msgDispatcher, "net.sf.jml.net.SocketSession.msgDispatcher");
+        msgDispatcherThread.start();
+        
+        msgSender = new MsgSender();
+        Thread msgSenderThread = new Thread(msgSender, "net.sf.jml.net.SocketSession.msgSender");
+        msgSenderThread.start();
+        
+        new Thread
+        (
+            new Runnable()
+        {
+            public void run()
+            {
+                try
+                {
+                    socket = new Socket();
+
+                    socket.connect(socketAddress);
+                    socket.setKeepAlive(false);
+                    isAvailable = true;
+
+                    in = socket.getInputStream();
+                    out = socket.getOutputStream();
+
+                    fireSessionEstablished();
+
+                } catch (IOException ex)
+                {
+                    logger.error("error establishing connection " , ex );
+                    
+                    fireSessionClosed();
+                    
+                    return;
+                }
+                
+                readBuffer = ByteBufferUtils.allocate(0x20000, false);
+
+                byte[] buff = null;
+                byte[] readBytes = null;
+                try
+                {
+                    int id = 0;
+                    int readBytesLen = 0;
+                    do
+                    {
+                        synchronized (readBuffer) {
+                            if(readBuffer == null)
+                                readBuffer = ByteBufferUtils.allocate(0x20000, false);
+                            else if(!readBuffer.hasRemaining())
+                                readBuffer = ByteBufferUtils.increaseCapacity(readBuffer, 0x20000);
+
+                            buff = new byte[4096];
+
+                            readBytesLen = in.read(buff);
+
+                            if(readBytesLen < 0)
+                                return;
+
+                            readBytes = new byte[readBytesLen];
+                            System.arraycopy(buff, 0, readBytes, 0, readBytesLen);
+                        
+//                            logger.trace("socket received '" + new String(readBytes) + "'");
+                            
+                            readBuffer.put(readBytes);
+                            
+                            readBuffer.flip();
+                            
+                            recognizeMessageAndDispatch(readBuffer);
+                            readBuffer.compact();
+                        }
+                    }while(readBytesLen > 0);
+                    } 
+                    catch(SocketException ex)
+                    {
+                        if(isClosing)
+                        {
+                            isClosing = false;
+                        }
+                        else
+                        {
+                            logger.debug("Smth happen to connection", ex);
+                            fireSessionClosed();
+                        }
+                    }
+                    catch (IOException ex)
+                    {
+                        logger.error("Smth happen to connection - IO ex", ex);
+                        if(!isClosing)
+                        {
+                            fireSessionClosed();
+                        }
+                    }
+                }
+        },
+        "net.sf.jml.net.SocketSession.reader").start();
+    }
+    
+    protected void recognizeMessageAndDispatch(ByteBuffer bytebuffer)
+    {
+        do
+        {
+            if(!bytebuffer.hasRemaining())
+                break;
+            Message message = recognizeMessage(bytebuffer);
+            if(message == null)
+                break;
+            msgDispatcher.dispacthMsg(message);
+        } while(true);
+    }
+    
+    protected Message recognizeMessage(ByteBuffer bytebuffer)
+    {
+        Message message;
+        boolean flag;
+
+        message = messagerecognizer.recognize(this, bytebuffer.asReadOnlyBuffer());
+        if(message == null) return null;
+
+        flag = message.readFromBuffer(bytebuffer);
+        
+//        logger.trace("session recognized message " + message.getClass().getName() + (flag ? " " : " not ") + "completed");
+        
+        if(flag)
+            return message;
+
+        return null;
+    }
+    
+    private class MsgDispatcher
+        implements Runnable
+    {
+        Vector queue = new Vector();
+        
+        boolean isRunning = true;
+         
+        byte[] notDispatchedBuffer = null;
+        
+        public void run()
+        {
+            while(true && isRunning)
+            {
+                synchronized (queue) {
+                    if(queue.isEmpty())
+                        
+                    try
+                    {
+                        queue.wait();
+                    } catch (InterruptedException ex)
+                    {
+                        return;
+                    }
+                }
+                    
+                Message msg = (Message)queue.remove(0);
+                fireMessageReceived(msg);
+            }
+        }
+        
+        void dispacthMsg(Message msg)
+        {
+            synchronized (queue)
+            {
+                queue.add(msg);
+                queue.notifyAll();
+            }
+        }
+    }
+
+    private void fireMessageReceived(Message msg)
+    {
+        logger.debug("Will fire messageReceived to [" + sessionListeners.size() + "] listeners");
+        Iterator iter = sessionListeners.iterator();
+        while (iter.hasNext())
+        {
+            SessionListener elem = (SessionListener)iter.next();
+            try
+            {
+                elem.messageReceived(Session.this, msg);
+            } catch (Exception ex)
+            {
+                logger.error("error firing events for msg received", ex);
+            }
+        }
+    }
+    
+    private void fireMessageSent(Message msg)
+    {
+        logger.debug("Will fire messageSent to [" + sessionListeners.size() + "] listeners");
+        Iterator iter = sessionListeners.iterator();
+        while (iter.hasNext())
+        {
+            SessionListener elem = (SessionListener)iter.next();
+            try
+            {
+                elem.messageSent(Session.this, msg);
+            } catch (Exception ex)
+            {
+                logger.error("error firing events for msg sent", ex);
+            }
+        }
+    }
+    
+    private void fireSessionClosed()
+    {
+        logger.debug("Will fire sessionClosed to [" + sessionListeners.size() + "] listeners");
+        Iterator iter = sessionListeners.iterator();
+        while (iter.hasNext())
+        {
+            SessionListener elem = (SessionListener)iter.next();
+            try
+            {
+                elem.sessionClosed(this);
+            } catch (Exception ex)
+            {
+                logger.error("error firing events for close", ex);
+            }
+        }
+    }
+    
+    private void fireSessionEstablished()
+    {
+        logger.debug("Will fire sessionEstablished to [" + sessionListeners.size() + "] listeners");
+        Iterator iter = sessionListeners.iterator();
+        while (iter.hasNext())
+        {
+            SessionListener elem = (SessionListener)iter.next();
+            try
+            {
+                elem.sessionEstablished(this);
+            } catch (Exception ex)
+            {
+                logger.error("error firing events for sessionEstablished", ex);
+            }
+        }
+    }
+    
+    private void fireSessionTimeout()
+    {
+        logger.debug("Will fire sessionTimeout to [" + sessionListeners.size() + "] listeners");
+        Iterator iter = sessionListeners.iterator();
+        while (iter.hasNext())
+        {
+            SessionListener elem = (SessionListener)iter.next();
+            try
+            {
+                elem.sessionTimeout(this);
+            } catch (Exception ex)
+            {
+                logger.error("error firing events for sessionEstablished", ex);
+            }
+        }
+    }
+    
+    public void close()
+    {
+        this.close(true);
+    }
+    
+    public void close(boolean flag)
+    {
+        if(isClosing) return;
+
+            isClosing = true;
+            
+            msgDispatcher.isRunning = false;
+            msgSender.isRunning = false;
+
+            try
+            {
+                socket.close();
+            } catch (IOException ex)
+            {
+                logger.error("error closing socket", ex);
+            }   
+            
+            isAvailable = false;
+            
+            fireSessionClosed();
+    }
+
+    public void write(Message message)
+        throws IllegalArgumentException, IllegalStateException
+    {
+        msgSender.sendMsg(message);
+    }
+
+    public boolean blockWrite(Message message)
+        throws IllegalArgumentException, IllegalStateException
+    {
+        try
+        {
+            sendMessage(message);
+
+        } catch (IOException ex)
+        {
+            logger.error("error sending msg", ex);
+            return false;
+        }
+
+        fireMessageSent(message);
+        
+        return true;
+    }
+    
+     private class MsgSender
+        implements Runnable
+    {
+        Vector queue = new Vector();
+        
+         boolean isRunning = true;
+        
+        public void run()
+        {
+            while(true && isRunning)
+            {
+                synchronized (queue) {
+                    if(queue.isEmpty())
+                        
+                        try
+                        {
+                            queue.wait();
+                        } catch (InterruptedException ex)
+                        {
+                            return;
+                        }
+                    
+                    Message message = (Message)queue.remove(0);
+                    try
+                    {
+                        
+                        Session.this.sendMessage(message);
+                        
+                        fireMessageSent(message);
+                        
+                    } catch (IOException ex)
+                    {
+                        logger.error("error sending msg", ex);
+                    }
+                }
+            }
+        }
+        
+        void sendMsg(Message message)
+        {
+            synchronized (queue)
+            {
+                queue.add(message);
+                queue.notifyAll();
+            }
+        }
+    }
+     
+    private synchronized void sendMessage(Message message)
+        throws IOException
+    {
+        ByteArrayOutputStream o = new ByteArrayOutputStream();
+
+        ByteBuffer[] toSendBuffs = message.toByteBuffer();
+        for (int i = 0; i < toSendBuffs.length; i++)
+        {
+            ByteBuffer buf = toSendBuffs[i];
+
+            byte[] bsToWrite = new byte[toSendBuffs[i].limit()];
+            toSendBuffs[i].get(bsToWrite, 0, bsToWrite.length);
+            
+            o.write(bsToWrite);
+
+        }
+        
+        
+//        logger.trace("send msg '" + new String(o.toByteArray()) + "' out:" + out);
+        o.writeTo(out);
+        out.flush();      
+    }
+
+    public void setSessionTimeout(int i)
+    {
+        logger.debug("setSessionTimeout:" + i);
+        
+        if(socket != null)
+        {
+            timoutTimer.schedule(new TimeoutFire(), i);
+        }
+//            try
+//            {
+//                socket.setSoTimeout(i);
+//            } catch (SocketException ex)
+//            {
+//                logger.error("cannot set timeout", ex);
+//            }
+    }
+    
+    private class TimeoutFire
+        extends TimerTask
+    {
+        public void run()
+        {
+            fireSessionTimeout();
+        }
+    }
+
+}
