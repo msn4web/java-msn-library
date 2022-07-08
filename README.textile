@@ -1,0 +1,15 @@
+h1. Java MSN Library (JML)
+
+JML is a Java library to interact with MSN Messenger via MSNP8-15 protocols.
+It is made with performance, thread-safety and ease of use in mind.
+
+h2. Supported JVM
+
+Java 6+ supported, runs on Scala 2 too.
+
+h2. Difference between this and SourceForge repo
+
+SourceForge repository has not been updated since 2013. While MSN Messenger is officially dead, there are community-run
+alternative MSN servers around like Escargot. Java MSN Library has several bugs, issues and severe incompatibilities
+with MSN Protocol. This repository aims to host an up-to-date JML version with bugfixes and Escargot compatability in
+mind.
