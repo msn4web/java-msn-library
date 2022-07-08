@@ -43,7 +43,7 @@ public class OutgoingANS extends MsnOutgoingMessage {
         setParam(1, authStr);
     }
 
-    public void setSessionId(int sessionId) {
-        setParam(2, String.valueOf(sessionId));
+    public void setSessionId(String sessionId) {
+        setParam(2, sessionId);
     }
 }

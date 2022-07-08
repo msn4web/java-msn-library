@@ -78,7 +78,7 @@ public class IncomingXFR extends MsnIncomingMessage {
                     .getAttachment();
             ((BasicMessenger) session.getMessenger()).newSwitchboard(
                     getReconnectHost(), getReconnectPort(), true,
-                    getAuthenticationStr(), 0, attachment);
+                    getAuthenticationStr(), "null", attachment);
         } else {
             session.close();
             ((BasicMessenger) session.getMessenger()).login(getReconnectHost(),

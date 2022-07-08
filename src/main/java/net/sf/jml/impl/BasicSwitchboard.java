@@ -43,7 +43,7 @@ public abstract class BasicSwitchboard extends AbstractSwitchboard {
     private final boolean createdByOwner;
 
     private String authStr;
-    private int sessionId;
+    private String sessionId;
 
     // 5 minutes
     private final int SESSION_ACTIVITY_TIMEOUT = 5 * 60 * 1000;
@@ -142,7 +142,7 @@ public abstract class BasicSwitchboard extends AbstractSwitchboard {
         this.authStr = authStr;
     }
 
-    public void setSessionId(int sessionId) {
+    public void setSessionId(String sessionId) {
         this.sessionId = sessionId;
     }
 

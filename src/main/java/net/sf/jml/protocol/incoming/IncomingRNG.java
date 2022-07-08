@@ -43,8 +43,8 @@ public class IncomingRNG extends MsnIncomingMessage {
         return false;
     }
 
-    public int getSessionId() {
-        return NumberUtils.stringToInt(getParam(0));
+    public String getSessionId() {
+        return getParam(0);
     }
 
     public String getConnectHost() {

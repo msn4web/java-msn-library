@@ -272,7 +272,7 @@ public abstract class BasicMessenger extends AbstractMessenger {
      * 		switchboard
      */
     public MsnSwitchboard newSwitchboard(String ip, int port,
-            boolean createdByOwner, String authStr, int sessionId,
+            boolean createdByOwner, String authStr, String sessionId,
             Object attachment) {
         final SimpleSwitchboard switchboard = new SimpleSwitchboard(this,
                 createdByOwner, ip, port);
