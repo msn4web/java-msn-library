@@ -65,7 +65,7 @@ public class IncomingUSR extends MsnIncomingMessage {
 //    private static final Log log = LogFactory.getLog(MsnIncomingMessage.class);
 
     private static final Pattern passportUrlPattern = Pattern
-            .compile(".*DALogin=([^,]*),.*");
+            .compile(".*DALogin=([^,]*).*");
 
     private static final Pattern ticketPattern = Pattern
             .compile(".*from-PP='([^']*)'.*");
