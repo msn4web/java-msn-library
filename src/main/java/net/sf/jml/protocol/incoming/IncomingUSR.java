@@ -159,16 +159,15 @@ public class IncomingUSR extends MsnIncomingMessage {
 //                    log.debug("MSNDEBUG: Lets ask the nexus what passport url to use");
                     HttpsURLConnection conn = null;
                     try {
-                        conn = (HttpsURLConnection) new URL(
-                                "https://nexus.passport.com/rdr/pprdr.asp")
-                                .openConnection();
+                        String nexusUrl = System.getProperty("msn.nexus", "https://m1.escargot.log1p.xyz/nexus-mock");
+                        conn = (HttpsURLConnection) new URL(nexusUrl).openConnection();
                         conn.setUseCaches(false);
 //                        log.debug("MSNDEBUG: Got password urls: "+conn.getHeaderField("PassportURLs"));
                         Matcher matcher = passportUrlPattern.matcher(conn
                                 .getHeaderField("PassportURLs"));
                         if (matcher.matches()) {
 //                            log.debug("MSNDEBUG: We're going to use url: "+matcher.group(1));
-                            return "https://" + matcher.group(1);
+                            return matcher.group(1);
                         }
 //                        log.debug("MSNDEBUG: Crap, no url found?!");
                         return null;
